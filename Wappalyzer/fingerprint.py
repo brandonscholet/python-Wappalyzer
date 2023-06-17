@@ -80,7 +80,7 @@ class Fingerprint:
         self.cats: List[int] = attrs.get('cats', [])
         self.description: Optional[str] = attrs.get('description') # type:ignore
         self.icon: Optional[str] = attrs.get('icon') # type:ignore
-        self.cpe: Optional[str] = attrs.get('cpe') # type:ignore
+        self.cpe: Optional[str] = attrs.get('cpe', [])
         self.saas: Optional[bool] = attrs.get('saas') # type:ignore
         self.oss: Optional[bool] = attrs.get('oss') # type:ignore
         self.pricing: List[str] = self._prepare_list(attrs['princing']) if 'princing' in attrs else []

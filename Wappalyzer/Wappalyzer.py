@@ -17,13 +17,15 @@ from Wappalyzer.webpage import WebPage, IWebPage
 
 logger = logging.getLogger(name="python-Wappalyzer")
 
+
 def is_valid_selector(sel):
-	try:
-		sv.compile(sel)
-	except (sv.SelectorSyntaxError, NotImplementedError):
-		logger.debug("Broken Selector:",sel)
-		return False
-	return True
+    try:
+        sv.compile(sel)
+    except (sv.SelectorSyntaxError, NotImplementedError):
+        logger.debug("Broken Selector:", sel)
+        return False
+    return True
+
 
 class WappalyzerError(Exception):
     # unused for now
@@ -32,14 +34,15 @@ class WappalyzerError(Exception):
     """
     pass
 
+
 class Wappalyzer:
     """
     Python Wappalyzer driver.
 
     Consider the following exemples.
-    
+
     Here is how you can use the latest technologies file from AliasIO/wappalyzer repository. 
-    
+
     .. python::
 
         from Wappalyzer import Wappalyzer
@@ -51,7 +54,7 @@ class Wappalyzer:
 
 
     Here is how you can custom request and headers arguments:
-    
+
     .. python::
 
         import requests
@@ -62,42 +65,42 @@ class Wappalyzer:
 
     """
 
-    def __init__(self, categories:Dict[str, Any], technologies:Dict[str, Any]):
+    def __init__(self, categories: Dict[str, Any], technologies: Dict[str, Any]):
         """
         Manually initialize a new Wappalyzer instance. 
-        
+
         You might want to use the factory method: `latest`
 
         :param categories: Map of category ids to names, as in ``technologies.json``.
         :param technologies: Map of technology names to technology dicts, as in ``technologies.json``.
         """
-        self.categories: Mapping[str, Category] = {k:Category(**v) for k,v in categories.items()}
-        self.technologies: Mapping[str, Fingerprint] = {k:Fingerprint(name=k, **v) for k,v in technologies.items()}
+        self.categories: Mapping[str, Category] = {k: Category(**v) for k, v in categories.items()}
+        self.technologies: Mapping[str, Fingerprint] = {k: Fingerprint(name=k, **v) for k, v in technologies.items()}
         self.detected_technologies: Dict[str, Dict[str, Technology]] = {}
 
         self._confidence_regexp = re.compile(r"(.+)\\;confidence:(\d+)")
 
     @classmethod
-    def latest(cls, technologies_file:str=None, update:bool=False) -> 'Wappalyzer':
+    def latest(cls, technologies_file: str = None, update: bool = False) -> 'Wappalyzer':
         """
         Construct a Wappalyzer instance.
-        
+
         Use ``update=True`` to download the very latest file from internet. 
         Do not update if the file has already been updated in the last 24 hours. 
         *New in version 0.4.0*
 
         Use ``technologies_file=/some/path/technologies.json`` to load a 
         custom technologies file. 
-        
+
         If no arguments is passed, load the default ``data/technologies.json`` file
         inside the package ressource.
 
         :param technologies_file: File path
         :param update: Download and use the latest ``technologies.json`` file 
             from `AliasIO/wappalyzer <https://github.com/AliasIO/wappalyzer>`_ repository.  
-        
+
         """
-        default=pkg_resources.resource_string(__name__, "data/technologies.json")
+        default = pkg_resources.resource_string(__name__, "data/technologies.json")
         defaultobj = json.loads(default)
 
         if technologies_file:
@@ -116,20 +119,29 @@ class Wappalyzer:
             # Get the lastest file
             if should_update:
                 try:
-                    lastest_technologies_file=requests.get('https://raw.githubusercontent.com/AliasIO/wappalyzer/master/src/technologies.json')
-                    obj = lastest_technologies_file.json()
                     _technologies_file = pathlib.Path(cls._find_files(
                         ['HOME', 'APPDATA',],
                         ['.python-Wappalyzer/technologies.json'],
-                        create = True
-                        ).pop())
-                    
+                        create=True
+                    ).pop())
+
+                    # get new categories from current Wappalyzer repo
+                    categories_response = requests.get('https://github.com/AliasIO/wappalyzer/raw/master/src/categories.json')
+                    categories = categories_response.json()
+                    technologies = {}
+                    # get new technologies from current Wappalyzer repo. they have been split into multiple files
+                    for letter in '_abcdefghijklmnopqrstuvwxyz':
+                        technologies_response = requests.get(f'https://github.com/AliasIO/wappalyzer/raw/master/src/technologies/{letter}.json')
+                        technologies = {**technologies, **technologies_response.json()}
+                    # merge into one object
+                    obj = {'categories': categories, 'technologies': technologies}
+
                     if obj != defaultobj:
                         with _technologies_file.open('w', encoding='utf-8') as tfile:
-                            tfile.write(lastest_technologies_file.text)
+                            tfile.write(json.dumps(obj))
                         logger.info("python-Wappalyzer technologies.json file updated")
 
-                except Exception as err: # Or loads default
+                except Exception as err:  # Or loads default
                     logger.error("Could not download latest Wappalyzer technologies.json file because of error : '{}'. Using default. ".format(err))
                     obj = defaultobj
             else:
@@ -141,7 +153,6 @@ class Wappalyzer:
         else:
             obj = defaultobj
 
-        
         return cls(categories=obj['categories'], technologies=obj['technologies'])
 
     @staticmethod
@@ -224,7 +235,7 @@ class Wappalyzer:
                 has_tech = True
         # analyze dom patterns
         # css selector, list of css selectors, or dict from css selector to dict with some of keys:
-        #           - "exists": "": only check if the selector matches somthing, equivalent to the list form. 
+        #           - "exists": "": only check if the selector matches somthing, equivalent to the list form.
         #           - "text": "regex": check if the .innerText property of the element that matches the css selector matches the regex (with version extraction).
         #           - "attributes": {dict from attr name to regex}: check if the attribute value of the element that matches the css selector matches the regex (with version extraction).
         for selector in tech_fingerprint.dom:
@@ -241,19 +252,34 @@ class Wappalyzer:
                     if selector.attributes:
                         for attrname, patterns in list(selector.attributes.items()):
                             _content = item.attributes.get(attrname)
-                            if _content:
+                            # if _content:
+                            #    for pattern in patterns:
+                            #        if pattern.regex.search(_content):
+                            #            self._set_detected_app(webpage.url, tech_fingerprint, 'dom', pattern, value=_content)
+                            #            has_tech = True
+
+                            if isinstance(_content, list):
                                 for pattern in patterns:
+                                    for _c in _content:
+                                        if pattern.regex.search(_c):
+                                            self._set_detected_app(webpage.url, tech_fingerprint, 'dom', pattern, value=_c)
+                                            has_tech = True
+
+                            if isinstance(_content, dict):
+                                for pattern in patterns:
+                                    print(_content)
                                     if pattern.regex.search(_content):
                                         self._set_detected_app(webpage.url, tech_fingerprint, 'dom', pattern, value=_content)
                                         has_tech = True
+
         return has_tech
 
-    def _set_detected_app(self, url:str,
-                                tech_fingerprint: Fingerprint, 
-                                app_type:str, 
-                                pattern: Pattern, 
-                                value:str, 
-                                key='') -> None:
+    def _set_detected_app(self, url: str,
+                          tech_fingerprint: Fingerprint,
+                          app_type: str,
+                          pattern: Pattern,
+                          value: str,
+                          key='') -> None:
         """
         Store detected technology to the detected_technologies dict.
         """
@@ -265,9 +291,10 @@ class Wappalyzer:
         detected_tech = self.detected_technologies[url][tech_fingerprint.name]
 
         # Set confidence level
-        if key != '': key += ' '
+        if key != '':
+            key += ' '
         match_name = app_type + ' ' + key + pattern.string
-        
+
         detected_tech.confidence[match_name] = pattern.confidence
 
         # Dectect version number
@@ -298,11 +325,11 @@ class Wappalyzer:
             return
         detected_tech.versions = sorted(detected_tech.versions, key=self._cmp_to_key(self._sort_app_versions))
 
-    def _get_implied_technologies(self, detected_technologies:Iterable[str]) -> Iterable[str]:
+    def _get_implied_technologies(self, detected_technologies: Iterable[str]) -> Iterable[str]:
         """
         Get the set of technologies implied by `detected_technologies`.
         """
-        def __get_implied_technologies(technologies:Iterable[str]) -> Iterable[str] :
+        def __get_implied_technologies(technologies: Iterable[str]) -> Iterable[str]:
             _implied_technologies = set()
             for tech in technologies:
                 try:
@@ -316,7 +343,7 @@ class Wappalyzer:
                             try:
                                 # Use more strict regexp (cause we have already checked the entry of "confidence")
                                 # Also, better way to compile regexp one time, instead of every time
-                                app_name, confidence = self._confidence_regexp.search(implie).groups() # type: ignore
+                                app_name, confidence = self._confidence_regexp.search(implie).groups()  # type: ignore
                                 if int(confidence) >= 50:
                                     _implied_technologies.add(app_name)
                             except (ValueError, AttributeError):
@@ -326,7 +353,7 @@ class Wappalyzer:
             return _implied_technologies
 
         implied_technologies = __get_implied_technologies(detected_technologies)
-        all_implied_technologies : Set[str] = set()
+        all_implied_technologies: Set[str] = set()
 
         # Descend recursively until we've found all implied technologies
         while not all_implied_technologies.issuperset(implied_technologies):
@@ -335,7 +362,16 @@ class Wappalyzer:
 
         return all_implied_technologies
 
-    def get_categories(self, tech_name:str) -> List[str]:
+    def get_cpe(self, tech_name: str) -> List[str]:
+        """
+        Retuns a list of the discovered cpes for an app name.
+
+        :param tech_name: Tech name
+        """
+        cpe = self.technologies[tech_name].cpe if tech_name in self.technologies else []
+        return cpe
+
+    def get_categories(self, tech_name: str) -> List[str]:
         """
         Returns a list of the categories for an technology name.
 
@@ -346,7 +382,7 @@ class Wappalyzer:
                      for cat_num in cat_nums if str(cat_num) in self.categories]
         return cat_names
 
-    def get_versions(self, url:str, app_name:str) -> List[str]:
+    def get_versions(self, url: str, app_name: str) -> List[str]:
         """
         Retuns a list of the discovered versions for an app name.
 
@@ -358,7 +394,7 @@ class Wappalyzer:
         except KeyError:
             return []
 
-    def get_confidence(self, url:str, app_name:str) -> Optional[int]:
+    def get_confidence(self, url: str, app_name: str) -> Optional[int]:
         """
         Returns the total confidence for an app name.
 
@@ -370,7 +406,7 @@ class Wappalyzer:
         except KeyError:
             return None
 
-    def analyze(self, webpage:IWebPage) -> Set[str]:
+    def analyze(self, webpage: IWebPage) -> Set[str]:
         """
         Return a set of technology that can be detected on the web page.
 
@@ -386,7 +422,7 @@ class Wappalyzer:
 
         return detected_technologies
 
-    def analyze_with_versions(self, webpage:IWebPage) -> Dict[str, Dict[str, Any]]:
+    def analyze_with_versions(self, webpage: IWebPage) -> Dict[str, Dict[str, Any]]:
         """
         Return a dict of applications and versions that can be detected on the web page.
 
@@ -401,7 +437,7 @@ class Wappalyzer:
 
         return versioned_apps
 
-    def analyze_with_categories(self, webpage:IWebPage) -> Dict[str, Dict[str, Any]]:
+    def analyze_with_categories(self, webpage: IWebPage) -> Dict[str, Dict[str, Any]]:
         """
         Return a dict of technologies and categories that can be detected on the web page.
 
@@ -423,7 +459,7 @@ class Wappalyzer:
 
         return categorised_technologies
 
-    def analyze_with_versions_and_categories(self, webpage:IWebPage) -> Dict[str, Dict[str, Any]]:
+    def analyze_with_versions_and_categories(self, webpage: IWebPage) -> Dict[str, Dict[str, Any]]:
         """
         Return a dict of applications and versions and categories that can be detected on the web page.
 
@@ -447,6 +483,20 @@ class Wappalyzer:
             versioned_and_categorised_apps[app_name]["categories"] = cat_names
 
         return versioned_and_categorised_apps
+
+    def analyze_with_versions_and_categories_and_cpe(self, webpage: IWebPage) -> Dict[str, Dict[str, Any]]:
+        """
+        Return a dict of applications and versions and categories and cpe that can be detected on the web page.
+
+        """
+        versioned_apps = self.analyze_with_versions_and_categories(webpage)
+        versioned_and_categorised_and_cpe = versioned_apps
+
+        for app_name in versioned_apps:
+            cpe = self.get_cpe(app_name)
+            versioned_and_categorised_and_cpe[app_name]["cpe"] = cpe
+
+        return versioned_and_categorised_and_cpe
 
     def _sort_app_versions(self, version_a: str, version_b: str) -> int:
         return len(version_a) - len(version_b)
@@ -481,11 +531,12 @@ class Wappalyzer:
 
         return CmpToKey
 
-def analyze(url:str, 
-            update:bool=False, 
-            useragent:str=None,
-            timeout:int=10,
-            verify:bool=True) -> Dict[str, Dict[str, Any]]:
+
+def analyze(url: str,
+            update: bool = False,
+            useragent: str = None,
+            timeout: int = 10,
+            verify: bool = True) -> Dict[str, Dict[str, Any]]:
     """
     Quick utility method to analyze a website with minimal configurable options. 
 
@@ -497,21 +548,21 @@ def analyze(url:str,
         - `useragent`: Request user agent
         - `timeout`: Request timeout
         - `verify`: SSL cert verify
-    
+
     :Return: 
         `dict`. Just as `Wappalyzer.analyze_with_versions_and_categories`. 
     :Note: More information might be added to the returned values in the future
     """
     # Create Wappalyzer
-    wappalyzer=Wappalyzer.latest(update=update)
+    wappalyzer = Wappalyzer.latest(update=update)
     # Create WebPage
-    headers={}
+    headers = {}
     if useragent:
         headers['User-Agent'] = useragent
-    webpage=WebPage.new_from_url(url, 
-        headers=headers, 
-        timeout=timeout, 
-        verify=verify)
+    webpage = WebPage.new_from_url(url,
+                                   headers=headers,
+                                   timeout=timeout,
+                                   verify=verify)
     # Analyze
     results = wappalyzer.analyze_with_versions_and_categories(webpage)
     return results
